@@ -6,12 +6,12 @@ on:
   pull_request:
     branches: [ main ]
 
-permissions:
-  contents: read
-  packages: write
-  
+env:
+  PYTHON_VERSION: '3.10'
+  NODE_VERSION: '18'
+
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     
     steps:
@@ -20,23 +20,52 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.10'
+        python-version: ${{ env.PYTHON_VERSION }}
         
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r services/auth-service/requirements.txt
-        pip install -r services/scraper-service/requirements.txt
-        pip install -r services/analysis-service/requirements.txt
-        pip install -r services/notification-service/requirements.txt
+        for service in auth-service scraper-service analysis-service notification-service; do
+          if [ -f services/$service/requirements.txt ]; then
+            pip install -r services/$service/requirements.txt
+          fi
+        done
+        
+    - name: Run linting
+      run: |
+        for service in auth-service scraper-service analysis-service notification-service; do
+          if [ -d services/$service/src ]; then
+            echo "Linting $service"
+            black --check services/$service/src
+            isort --check-only services/$service/src
+            flake8 services/$service/src
+          fi
+        done
         
     - name: Run tests
       run: |
-        pytest services/auth-service/tests/
-        pytest services/scraper-service/tests/
-        pytest services/analysis-service/tests/
-        pytest services/notification-service/tests/
+        for service in auth-service scraper-service analysis-service notification-service; do
+          if [ -d services/$service/tests ]; then
+            echo "Testing $service"
+            pytest services/$service/tests/ --cov=services/$service/src --cov-report=xml
+          fi
+        done
         
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
       
@@ -47,33 +76,13 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
         
-    - name: Build and push Auth Service
-      uses: docker/build-push-action@v4
-      with:
-        context: ./services/auth-service
-        push: true
-        tags: ghcr.io/${{ github.repository }}/auth-service:latest
-        
-    - name: Build and push Scraper Service
-      uses: docker/build-push-action@v4
-      with:
-        context: ./services/scraper-service
-        push: true
-        tags: ghcr.io/${{ github.repository }}/scraper-service:latest
-        
-    - name: Build and push Analysis Service
-      uses: docker/build-push-action@v4
-      with:
-        context: ./services/analysis-service
-        push: true
-        tags: ghcr.io/${{ github.repository }}/analysis-service:latest
-        
-    - name: Build and push Notification Service
-      uses: docker/build-push-action@v4
-      with:
-        context: ./services/notification-service
-        push: true
-        tags: ghcr.io/${{ github.repository }}/notification-service:latest
+    - name: Build and push services
+      run: |
+        for service in auth-service scraper-service analysis-service notification-service; do
+          echo "Building $service"
+          docker build -t ghcr.io/${{ github.repository }}/$service:latest services/$service
+          docker push ghcr.io/${{ github.repository }}/$service:latest
+        done
 
   deploy:
     needs: build
@@ -95,9 +104,6 @@ jobs:
         
     - name: Deploy to EKS
       run: |
-        kubectl apply -f k8s/backend/auth-service.yaml
-        kubectl apply -f k8s/backend/scraper-service.yaml
-        kubectl apply -f k8s/backend/analysis-service.yaml
-        kubectl apply -f k8s/backend/notification-service.yaml
+        kubectl apply -f k8s/backend/
         kubectl apply -f k8s/frontend/webapp.yaml
         kubectl apply -f k8s/ingress.yaml
