@@ -1,0 +1,206 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=jse_stock_db
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - ENVIRONMENT=development
+    volumes:
+      - ./services/auth-service:/app
+    depends_on:
+      - postgres
+    networks:
+      - jse-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  scraper-service:
+    build:
+      context: ./services/scraper-service
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=us-east-1
+      - DYNAMODB_TABLE=jse_stock_data
+      - ENVIRONMENT=development
+    volumes:
+      - ./services/scraper-service:/app
+    depends_on:
+      - dynamodb-local
+    networks:
+      - jse-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  analysis-service:
+    build:
+      context: ./services/analysis-service
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=us-east-1
+      - DYNAMODB_TABLE=jse_stock_data
+      - ENVIRONMENT=development
+    volumes:
+      - ./services/analysis-service:/app
+    depends_on:
+      - dynamodb-local
+    networks:
+      - jse-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=us-east-1
+      - SNS_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:jse-stock-notifications
+      - ENVIRONMENT=development
+    volumes:
+      - ./services/notification-service:/app
+    depends_on:
+      - localstack
+    networks:
+      - jse-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  webapp:
+    build:
+      context: ./frontend/web-app
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_BASE_URL=http://localhost:8080
+      - NODE_ENV=development
+    volumes:
+      - ./frontend/web-app:/app
+      - /app/node_modules
+    networks:
+      - jse-network
+    depends_on:
+      - auth-service
+      - analysis-service
+      - notification-service
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - auth-service
+      - scraper-service
+      - analysis-service
+      - notification-service
+    networks:
+      - jse-network
+
+  postgres:
+    image: postgres:14-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=jse_stock_db
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - jse-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d jse_stock_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    ports:
+      - "8000:8000"
+    command: "-jar DynamoDBLocal.jar -sharedDb"
+    volumes:
+      - dynamodb_data:/home/dynamodblocal/data
+    networks:
+      - jse-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sns,sqs
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+    volumes:
+      - localstack_data:/tmp/localstack
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - jse-network
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - jse-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  jse-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  dynamodb_data:
+  localstack_data:
+  redis_data:
