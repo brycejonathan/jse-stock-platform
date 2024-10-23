@@ -1,0 +1,28 @@
+# .github/actions/deployment-check/action.yml
+name: 'Deployment Check'
+description: 'Validates deployment status and health of services'
+inputs:
+  environment:
+    description: 'Environment to check (staging/production)'
+    required: true
+  endpoints:
+    description: 'Comma-separated list of endpoints to check'
+    required: true
+  max-retries:
+    description: 'Maximum number of retry attempts'
+    required: false
+    default: '5'
+  retry-delay:
+    description: 'Delay between retries in seconds'
+    required: false
+    default: '30'
+
+outputs:
+  status:
+    description: 'Deployment check status'
+  timestamp:
+    description: 'Timestamp of completion'
+
+runs:
+  using: 'node16'
+  main: 'index.js'

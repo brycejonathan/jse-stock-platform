@@ -1,0 +1,1 @@
+pytest>=7.0.0\nflake8>=4.0.0\nblack>=22.0.0

@@ -1,0 +1,228 @@
+# test.yml
+name: Run Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'services/**'
+      - 'frontend/**'
+      - '.github/workflows/test.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'services/**'
+      - 'frontend/**'
+      - '.github/workflows/test.yml'
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [auth-service, scraper-service, analysis-service, notification-service]
+        python-version: ['3.11']
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          
+      - name: Install dependencies
+        run: |
+          cd services/${{ matrix.service }}
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-asyncio pytest-mock pytest-xdist
+          
+      - name: Run unit tests with coverage
+        run: |
+          cd services/${{ matrix.service }}
+          pytest tests/unit \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=html \
+            --junitxml=test-results/junit.xml \
+            -n auto \
+            --verbose
+          
+      - name: Upload coverage report to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: services/${{ matrix.service }}/coverage.xml
+          flags: unittests,${{ matrix.service }}
+          name: ${{ matrix.service }}-coverage
+          fail_ci_if_error: true
+          
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results-${{ matrix.service }}
+          path: services/${{ matrix.service }}/test-results
+          
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report-${{ matrix.service }}
+          path: services/${{ matrix.service }}/htmlcov
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    strategy:
+      matrix:
+        service: [auth-service, scraper-service, analysis-service, notification-service]
+    
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local
+        ports:
+          - 8000:8000
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          
+      - name: Install dependencies
+        run: |
+          cd services/${{ matrix.service }}
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-mock pytest-integration
+          
+      - name: Run integration tests
+        env:
+          DYNAMODB_ENDPOINT: http://localhost:8000
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          cd services/${{ matrix.service }}
+          pytest tests/integration \
+            --junitxml=test-results/junit-integration.xml \
+            --verbose
+          
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: integration-test-results-${{ matrix.service }}
+          path: services/${{ matrix.service }}/test-results
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/web-app/package-lock.json
+          
+      - name: Install dependencies
+        run: |
+          cd frontend/web-app
+          npm ci
+          
+      - name: Run unit tests
+        run: |
+          cd frontend/web-app
+          npm run test:coverage
+          
+      - name: Upload coverage report to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: frontend/web-app/coverage/lcov.info
+          flags: frontend
+          name: frontend-coverage
+          fail_ci_if_error: true
+          
+      - name: Run E2E tests
+        run: |
+          cd frontend/web-app
+          npm run test:e2e
+          
+      - name: Upload E2E test artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: e2e-test-results
+          path: frontend/web-app/cypress/videos
+
+  test-summary:
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, frontend-tests]
+    if: always()
+    
+    steps:
+      - name: Download all test results
+        uses: actions/download-artifact@v3
+        with:
+          path: test-results
+          
+      - name: Publish test summary
+        uses: test-summary/action@v2
+        with:
+          paths: "test-results/**/junit*.xml"
+          
+      - name: Check test results
+        run: |
+          if [[ "${{ needs.unit-tests.result }}" != "success" || \
+                "${{ needs.integration-tests.result }}" != "success" || \
+                "${{ needs.frontend-tests.result }}" != "success" ]]; then
+            echo "One or more test jobs failed"
+            exit 1
+          fi
+          
+      - name: Send test results to Slack
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          channel-id: 'test-results'
+          slack-message: |
+            Test Results for ${{ github.repository }}:
+            Unit Tests: ${{ needs.unit-tests.result }}
+            Integration Tests: ${{ needs.integration-tests.result }}
+            Frontend Tests: ${{ needs.frontend-tests.result }}
+            
+            For details see: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+  test-cleanup:
+    runs-on: ubuntu-latest
+    needs: test-summary
+    if: always()
+    
+    steps:
+      - name: Clean up test artifacts older than 7 days
+        uses: c-hive/gha-remove-artifacts@v1
+        with:
+          age: '7 days'
+          skip-tags: true
+          skip-recent: 5

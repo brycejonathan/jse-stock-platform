@@ -1,0 +1,40 @@
+# post-deploy.yml
+name: Post Deployment Checks
+
+on:
+  workflow_run:
+    workflows: ["Deploy to Production"]
+    types: [completed]
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    
+    steps:
+      - name: Check API endpoints
+        run: |
+          for endpoint in auth stocks analysis notifications; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" https://api.jse-stock-platform.com/${endpoint}/health)
+            if [ "$response" != "200" ]; then
+              echo "Health check failed for ${endpoint} endpoint"
+              exit 1
+            fi
+          done
+          
+      - name: Check frontend
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://jse-stock-platform.com)
+          if [ "$response" != "200" ]; then
+            echo "Frontend health check failed"
+            exit 1
+          fi
+          
+      - name: Send notification
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          channel-id: 'deployments'
+          slack-message: "Deployment health check status: ${{ job.status }}"
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}

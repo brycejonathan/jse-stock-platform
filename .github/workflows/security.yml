@@ -1,0 +1,34 @@
+# security.yml
+name: Security Checks
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  push:
+    branches: [ main ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run dependency vulnerability scan
+        uses: snyk/actions/python@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+          
+      - name: Run container vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'jse-stock-platform/*'
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+          
+      - name: Run infrastructure scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: k8s/
+          framework: kubernetes

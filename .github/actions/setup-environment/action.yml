@@ -1,0 +1,26 @@
+# .github/actions/setup-environment/action.yml
+name: 'Setup Environment'
+description: 'Sets up deployment environment with required configurations'
+
+inputs:
+  environment:
+    description: 'Target environment (staging/production)'
+    required: true
+  setup-type:
+    description: 'Type of setup (full/minimal)'
+    required: false
+    default: 'full'
+  aws-region:
+    description: 'AWS Region'
+    required: false
+    default: 'us-east-1'
+
+outputs:
+  config:
+    description: 'Environment configuration'
+  timestamp:
+    description: 'Setup completion timestamp'
+
+runs:
+  using: 'node16'
+  main: 'index.js'

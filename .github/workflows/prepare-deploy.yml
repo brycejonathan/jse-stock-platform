@@ -1,0 +1,31 @@
+# prepare-deployment.yml
+name: Prepare Deployment
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          echo "Generating release notes for version ${GITHUB_REF#refs/tags/}"
+          # Add logic to generate release notes from git log
+          
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: ${{ steps.release_notes.outputs.notes }}
+          draft: false
+          prerelease: false

@@ -1,0 +1,97 @@
+# build.yml
+name: Build Services
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'services/**'
+      - 'frontend/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'services/**'
+      - 'frontend/**'
+
+jobs:
+  build-services:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [auth-service, scraper-service, analysis-service, notification-service]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Cache pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('services/${{ matrix.service }}/requirements.txt') }}
+          
+      - name: Install dependencies
+        run: |
+          cd services/${{ matrix.service }}
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Build Docker image
+        run: |
+          cd services/${{ matrix.service }}
+          docker build -t jse-stock-platform/${{ matrix.service }}:${{ github.sha }} .
+          
+      - name: Push to ECR
+        if: github.ref == 'refs/heads/main'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+        run: |
+          aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+          docker tag jse-stock-platform/${{ matrix.service }}:${{ github.sha }} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/jse-stock-platform/${{ matrix.service }}:${{ github.sha }}
+          docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/jse-stock-platform/${{ matrix.service }}:${{ github.sha }}
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Cache npm packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('frontend/web-app/package-lock.json') }}
+          
+      - name: Install dependencies
+        run: |
+          cd frontend/web-app
+          npm ci
+          
+      - name: Build frontend
+        run: |
+          cd frontend/web-app
+          npm run build
+          
+      - name: Build and push Docker image
+        if: github.ref == 'refs/heads/main'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+        run: |
+          cd frontend/web-app
+          docker build -t jse-stock-platform/webapp:${{ github.sha }} .
+          aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+          docker tag jse-stock-platform/webapp:${{ github.sha }} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/jse-stock-platform/webapp:${{ github.sha }}
+          docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/jse-stock-platform/webapp:${{ github.sha }}

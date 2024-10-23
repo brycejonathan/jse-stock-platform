@@ -1,0 +1,43 @@
+# cd.yml
+name: Continuous Deployment
+
+on:
+  workflow_run:
+    workflows: ["Build Services"]
+    branches: [main]
+    types: [completed]
+
+jobs:
+  deploy-to-kubernetes:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+          
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name jse-stock-platform-cluster --region us-east-1
+          
+      - name: Deploy to Kubernetes
+        run: |
+          # Update image tags in K8s manifests
+          for service in auth-service scraper-service analysis-service notification-service; do
+            sed -i "s|image:.*|image: ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/jse-stock-platform/${service}:${GITHUB_SHA}|" k8s/backend/${service}.yaml
+            kubectl apply -f k8s/backend/${service}.yaml
+          done
+          
+          # Deploy frontend
+          sed -i "s|image:.*|image: ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/jse-stock-platform/webapp:${GITHUB_SHA}|" k8s/frontend/webapp.yaml
+          kubectl apply -f k8s/frontend/webapp.yaml
+          
+          # Deploy other resources
+          kubectl apply -f k8s/ingress.yaml
+          kubectl apply -f k8s/database.yaml

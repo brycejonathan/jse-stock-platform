@@ -1,0 +1,74 @@
+# ci.yml
+name: Continuous Integration
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  code-quality:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [auth-service, scraper-service, analysis-service, notification-service]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          cd services/${{ matrix.service }}
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pylint black mypy pytest
+          
+      - name: Run linting
+        run: |
+          cd services/${{ matrix.service }}
+          pylint src/
+          
+      - name: Run type checking
+        run: |
+          cd services/${{ matrix.service }}
+          mypy src/
+          
+      - name: Run tests
+        run: |
+          cd services/${{ matrix.service }}
+          pytest tests/
+
+  frontend-quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: |
+          cd frontend/web-app
+          npm ci
+          
+      - name: Run ESLint
+        run: |
+          cd frontend/web-app
+          npm run lint
+          
+      - name: Run TypeScript compilation check
+        run: |
+          cd frontend/web-app
+          npm run type-check
+          
+      - name: Run tests
+        run: |
+          cd frontend/web-app
+          npm test
