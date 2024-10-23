@@ -1,0 +1,50 @@
+# shared/config/scraper.yaml
+app:
+  name: scraper-service
+  environment: ${ENVIRONMENT:-development}
+  debug: ${DEBUG:-true}
+
+server:
+  host: 0.0.0.0
+  port: 8001
+  workers: ${SERVER_WORKERS:-2}
+  timeout: 300
+
+scraper:
+  base_url: "https://www.jamstockex.com"
+  max_retries: 3
+  retry_delay: 5
+  timeout: 30
+  concurrent_requests: 2
+  user_agent: "JSE-Stock-Platform/1.0"
+  headers:
+    Accept: "text/html,application/xhtml+xml"
+    Accept-Language: "en-US,en;q=0.9"
+
+selenium:
+  headless: true
+  implicit_wait: 10
+  page_load_timeout: 30
+  window_size: "1920x1080"
+
+storage:
+  type: dynamodb
+  table_name: ${DYNAMODB_TABLE:-jse_stock_data}
+  region: ${AWS_REGION:-us-east-1}
+  endpoint: ${DYNAMODB_ENDPOINT:-""}
+
+aws:
+  access_key_id: ${AWS_ACCESS_KEY_ID}
+  secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+  region: ${AWS_REGION:-us-east-1}
+
+logging:
+  level: ${LOG_LEVEL:-INFO}
+  format: json
+  output: stdout
+  file_path: /var/log/scraper-service.log
+
+monitoring:
+  metrics_enabled: true
+  metrics_port: 9091
+  health_check_interval: 30

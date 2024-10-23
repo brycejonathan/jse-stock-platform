@@ -1,0 +1,48 @@
+# shared/config/notification.yaml
+app:
+  name: notification-service
+  environment: ${ENVIRONMENT:-development}
+  debug: ${DEBUG:-true}
+
+server:
+  host: 0.0.0.0
+  port: 8003
+  workers: ${SERVER_WORKERS:-2}
+  timeout: 30
+
+notifications:
+  providers:
+    - email
+    - sms
+  rate_limit:
+    max_per_hour: 10
+    max_per_day: 50
+  templates_dir: templates/
+  default_language: en
+
+email:
+  smtp_host: ${SMTP_HOST:-smtp.gmail.com}
+  smtp_port: ${SMTP_PORT:-587}
+  smtp_user: ${SMTP_USER}
+  smtp_password: ${SMTP_PASSWORD}
+  from_email: ${FROM_EMAIL:-noreply@jsestock.com}
+  from_name: JSE Stock Platform
+
+aws:
+  access_key_id: ${AWS_ACCESS_KEY_ID}
+  secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+  region: ${AWS_REGION:-us-east-1}
+  sns:
+    topic_arn: ${SNS_TOPIC_ARN}
+    sms_type: Transactional
+
+logging:
+  level: ${LOG_LEVEL:-INFO}
+  format: json
+  output: stdout
+  file_path: /var/log/notification-service.log
+
+monitoring:
+  metrics_enabled: true
+  metrics_port: 9093
+  health_check_interval: 30

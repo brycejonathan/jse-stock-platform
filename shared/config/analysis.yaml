@@ -1,0 +1,50 @@
+# shared/config/analysis.yaml
+app:
+  name: analysis-service
+  environment: ${ENVIRONMENT:-development}
+  debug: ${DEBUG:-true}
+
+server:
+  host: 0.0.0.0
+  port: 8002
+  workers: ${SERVER_WORKERS:-4}
+  timeout: 60
+
+analysis:
+  cache_ttl: 300
+  max_period_years: 5
+  default_period_days: 30
+  metrics:
+    - simple_moving_average
+    - exponential_moving_average
+    - relative_strength_index
+    - moving_average_convergence_divergence
+    - bollinger_bands
+
+storage:
+  type: dynamodb
+  table_name: ${DYNAMODB_TABLE:-jse_stock_data}
+  region: ${AWS_REGION:-us-east-1}
+  endpoint: ${DYNAMODB_ENDPOINT:-""}
+
+aws:
+  access_key_id: ${AWS_ACCESS_KEY_ID}
+  secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+  region: ${AWS_REGION:-us-east-1}
+
+redis:
+  host: ${REDIS_HOST:-redis}
+  port: ${REDIS_PORT:-6379}
+  db: 0
+  ttl: 3600
+
+logging:
+  level: ${LOG_LEVEL:-INFO}
+  format: json
+  output: stdout
+  file_path: /var/log/analysis-service.log
+
+monitoring:
+  metrics_enabled: true
+  metrics_port: 9092
+  health_check_interval: 30

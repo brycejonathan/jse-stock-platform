@@ -1,0 +1,46 @@
+# shared/config/auth.yaml
+app:
+  name: auth-service
+  environment: ${ENVIRONMENT:-development}
+  debug: ${DEBUG:-true}
+
+server:
+  host: 0.0.0.0
+  port: 8000
+  workers: ${SERVER_WORKERS:-4}
+  timeout: 60
+
+security:
+  jwt:
+    secret: ${JWT_SECRET}
+    algorithm: HS256
+    access_token_expire_minutes: 30
+    refresh_token_expire_days: 7
+  password:
+    min_length: 8
+    require_special_char: true
+    require_number: true
+    require_uppercase: true
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 60
+
+database:
+  host: ${DB_HOST:-postgres}
+  port: ${DB_PORT:-5432}
+  name: ${DB_NAME:-jse_stock_db}
+  user: ${DB_USER}
+  password: ${DB_PASSWORD}
+  pool_size: ${DB_POOL_SIZE:-5}
+  ssl_mode: ${DB_SSL_MODE:-disable}
+
+logging:
+  level: ${LOG_LEVEL:-INFO}
+  format: json
+  output: stdout
+  file_path: /var/log/auth-service.log
+
+monitoring:
+  metrics_enabled: true
+  metrics_port: 9090
+  health_check_interval: 30
