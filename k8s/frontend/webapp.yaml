@@ -1,0 +1,55 @@
+# k8s/frontend/webapp.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp
+  namespace: jse-stock-platform
+  labels:
+    app: webapp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: webapp
+  template:
+    metadata:
+      labels:
+        app: webapp
+    spec:
+      containers:
+      - name: webapp
+        image: jse-stock-platform/webapp:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: API_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: frontend-config
+              key: api-base-url
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "300m"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp
+  namespace: jse-stock-platform
+spec:
+  selector:
+    app: webapp
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP

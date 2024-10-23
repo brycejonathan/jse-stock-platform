@@ -1,0 +1,46 @@
+# k8s/database.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-secrets
+  namespace: jse-stock-platform
+type: Opaque
+data:
+  host: base64_encoded_host
+  username: base64_encoded_username
+  password: base64_encoded_password
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-credentials
+  namespace: jse-stock-platform
+type: Opaque
+data:
+  access-key: base64_encoded_access_key
+  secret-key: base64_encoded_secret_key
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jwt-secret
+  namespace: jse-stock-platform
+type: Opaque
+data:
+  key: base64_encoded_jwt_secret
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-config
+  namespace: jse-stock-platform
+data:
+  sns-topic-arn: "arn:aws:sns:us-east-1:123456789012:jse-stock-notifications"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: jse-stock-platform
+data:
+  api-base-url: "https://api.jsestock.com"

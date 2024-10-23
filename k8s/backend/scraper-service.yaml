@@ -1,0 +1,96 @@
+# k8s/backend/scraper-service.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scraper-service
+  namespace: jse-stock-platform
+  labels:
+    app: scraper-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: scraper-service
+  template:
+    metadata:
+      labels:
+        app: scraper-service
+    spec:
+      containers:
+      - name: scraper-service
+        image: jse-stock-platform/scraper-service:latest
+        ports:
+        - containerPort: 8001
+        env:
+        - name: DYNAMODB_TABLE
+          value: "jse_stock_data"
+        - name: AWS_REGION
+          value: "us-east-1"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: access-key
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: secret-key
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "300m"
+          limits:
+            memory: "1Gi"
+            cpu: "700m"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 15
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stock-data-scraper
+  namespace: jse-stock-platform
+spec:
+  schedule: "0 15 * * 1-5"  # 3 PM Jamaica time on weekdays
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: scraper-job
+            image: jse-stock-platform/scraper-service:latest
+            command: ["python", "-m", "src.main", "scrape"]
+            env:
+            - name: DYNAMODB_TABLE
+              value: "jse_stock_data"
+            - name: AWS_REGION
+              value: "us-east-1"
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aws-credentials
+                  key: access-key
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aws-credentials
+                  key: secret-key
+          restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scraper-service
+  namespace: jse-stock-platform
+spec:
+  selector:
+    app: scraper-service
+  ports:
+  - port: 80
+    targetPort: 8001
+  type: ClusterIP

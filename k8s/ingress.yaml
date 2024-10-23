@@ -1,0 +1,52 @@
+# k8s/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jse-stock-platform-ingress
+  namespace: jse-stock-platform
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  tls:
+  - hosts:
+    - api.jsestock.com
+    - www.jsestock.com
+    secretName: jse-stock-tls
+  rules:
+  - host: api.jsestock.com
+    http:
+      paths:
+      - path: /auth
+        pathType: Prefix
+        backend:
+          service:
+            name: auth-service
+            port:
+              number: 80
+      - path: /stocks
+        pathType: Prefix
+        backend:
+          service:
+            name: analysis-service
+            port:
+              number: 80
+      - path: /notifications
+        pathType: Prefix
+        backend:
+          service:
+            name: notification-service
+            port:
+              number: 80
+  - host: www.jsestock.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: webapp
+            port:
+              number: 80
